@@ -6,11 +6,13 @@
 mod delim;
 mod error;
 mod recursive;
+mod token;
 mod tokenizer;
 mod types;
 
 pub use error::Error;
 pub use recursive::{Include, Level, RecursiveChunker};
+pub use token::{Overlap, TokenChunker};
 pub use tokenizer::{DEFAULT_TOKENIZER, Tokenizer};
 pub use types::Chunk;
 

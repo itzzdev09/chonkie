@@ -76,6 +76,39 @@ impl Tokenizer {
         })
     }
 
+    /// Byte offset where each token of `text` ends, when the tokens decode
+    /// back to exactly `text`. `None` for tokenizers that rewrite text
+    /// (lowercasing, accent stripping), whose tokens don't map to bytes.
+    /// `lens` caches each token's decoded length between calls.
+    pub(crate) fn token_ends(
+        &mut self,
+        text: &str,
+        lens: &mut Vec<u32>,
+    ) -> Result<Option<Vec<usize>>> {
+        let Some(tok) = self.load()? else {
+            return Ok(Some(
+                text.char_indices().map(|(i, c)| i + c.len_utf8()).collect(),
+            ));
+        };
+        let mut ids = Vec::new();
+        tok.encode(text, &mut ids)?;
+        if tok.decode_bytes(&ids, tokie::Specials::Keep)? != text.as_bytes() {
+            return Ok(None);
+        }
+        lens.resize(tok.vocab_size().max(lens.len()), u32::MAX);
+        let mut end = 0;
+        let mut ends = Vec::with_capacity(ids.len());
+        for &id in &ids {
+            let len = &mut lens[id as usize];
+            if *len == u32::MAX {
+                *len = tok.decode_bytes(&[id], tokie::Specials::Keep)?.len() as u32;
+            }
+            end += *len as usize;
+            ends.push(end);
+        }
+        Ok((end == text.len()).then_some(ends))
+    }
+
     fn load(&mut self) -> Result<Option<&mut tokie::Tokenizer>> {
         let loaded = match &self.0 {
             Kind::Pretrained(repo) => tokie::Tokenizer::pretrained(repo)?,
