@@ -57,14 +57,23 @@ def fake_turbopuffer_module() -> Any:
     """Install a minimal ``turbopuffer`` module for the duration of the test."""
     mod = types.ModuleType("turbopuffer")
     mod.Turbopuffer = _FakeTurbopuffer
-    mod.Namespace = _FakeNamespace
-    old = sys.modules.get("turbopuffer")
-    sys.modules["turbopuffer"] = mod
+    # Like the real package (2.x+), Namespace lives only in turbopuffer.lib.namespace.
+    lib = types.ModuleType("turbopuffer.lib")
+    namespace_mod = types.ModuleType("turbopuffer.lib.namespace")
+    namespace_mod.Namespace = _FakeNamespace
+    fakes = {
+        "turbopuffer": mod,
+        "turbopuffer.lib": lib,
+        "turbopuffer.lib.namespace": namespace_mod,
+    }
+    old = {name: sys.modules.get(name) for name in fakes}
+    sys.modules.update(fakes)
     yield mod
-    if old is not None:
-        sys.modules["turbopuffer"] = old
-    else:
-        sys.modules.pop("turbopuffer", None)
+    for name, module in old.items():
+        if module is not None:
+            sys.modules[name] = module
+        else:
+            sys.modules.pop(name, None)
 
 
 @pytest.fixture
@@ -140,3 +149,20 @@ def test_turbopuffer_repr(
     ns = _FakeNamespace("my-id")
     hs = TurbopufferHandshake(namespace=ns, api_key="k")
     assert "my-id" in repr(hs)
+
+
+def test_turbopuffer_handshake_accepts_real_namespace(
+    mock_embeddings_tpuf, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A Namespace from the installed turbopuffer client passes the type check."""
+    turbopuffer = pytest.importorskip("turbopuffer")
+    from chonkie.handshakes.turbopuffer import TurbopufferHandshake
+
+    # Avoid the network call that lists existing namespaces.
+    monkeypatch.setattr(turbopuffer.Turbopuffer, "namespaces", lambda self: [])
+
+    ns = turbopuffer.Turbopuffer(api_key="k", region="gcp-us-central1").namespace("given")
+    assert TurbopufferHandshake(namespace=ns, api_key="k").namespace is ns
+
+    hs = TurbopufferHandshake(namespace_name="named", api_key="k")
+    assert hs.namespace.id == "named"

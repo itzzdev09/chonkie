@@ -49,6 +49,7 @@ class TurbopufferHandshake(BaseHandshake):
 
         try:
             import turbopuffer
+            from turbopuffer.lib.namespace import Namespace
         except ImportError as ie:
             raise ImportError(
                 "Turbopuffer is not available. Please install it with `pip install turbopuffer`.",
@@ -70,14 +71,15 @@ class TurbopufferHandshake(BaseHandshake):
                         break
             namespace = self.tpuf.namespace(namespace_name)
             logger.info(f"Chonkie has created a new namespace: {namespace.id}")
-        # enforce linting
-        _Namespace = getattr(turbopuffer, "Namespace")
-        if not isinstance(namespace, _Namespace):
+        # turbopuffer 2.x no longer exports Namespace from the package root.
+        if not isinstance(namespace, Namespace):
             raise ValueError(
                 "The provided namespace is not a valid Turbopuffer Namespace instance."
             )
 
-        self.namespace = namespace
+        # Keep this Any, as before: the write/query arguments below are not typed
+        # as narrowly as the client signatures.
+        self.namespace: Any = namespace
 
         # Initialize the embedding model
         self.embedding_model = AutoEmbeddings.get_embeddings(embedding_model)
